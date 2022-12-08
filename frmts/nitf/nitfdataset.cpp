@@ -3936,7 +3936,8 @@ static char **NITFJP2OPENJPEGOptions( GDALDriver* poJ2KDriver,
     }
 
     const char* pszProfile = CSLFetchNameValueDef(papszOptions, "PROFILE", "");
-    if( STARTS_WITH_CI(pszProfile, "NPJE") )
+    if( STARTS_WITH_CI(pszProfile, "NPJE") &&
+        !EQUAL(poJ2KDriver->GetDescription(), "JP2KAK"))
     {
         // Follow STDI-0006 NCDRD "2.3 Data Compression - JPEG 2000" and
         // ISO/IEC BIIF Profile BPJ2K01.10 (https://nsgreg.nga.mil/doc/view?i=2031&month=3&day=22&year=2021),
@@ -6665,6 +6666,14 @@ void NITFDriver::InitCreationOptionList()
 "       <Value>NPJE_VISUALLY_LOSSLESS</Value>"
 "       <Value>NPJE_NUMERICALLY_LOSSLESS</Value>";
         }
+        if (bHasJP2KAK)
+        {
+            // Added by Tim Mensch to support NPJE output. Profile will not be
+            // respected, so other settings need to be updated manually, but
+            // some settings are unavailable if this isn't set.
+            osCreationOptions +=
+                "       <Value>NPJE_NUMERICALLY_LOSSLESS</Value>";
+        }
         if( bHasJP2ECW )
         {
             osCreationOptions += "       <Value>EPJE</Value>";
@@ -6716,6 +6725,7 @@ void NITFDriver::InitCreationOptionList()
 
     osCreationOptions +=
 "   <Option name='TRE' type='string' description='Under the format TRE=tre-name,tre-contents'/>"
+"   <Option name='TLM' type='boolean' description='Write TLM and PLT'/>"
 "   <Option name='FILE_TRE' type='string' description='Under the format FILE_TRE=tre-name,tre-contents'/>"
 "   <Option name='BLOCKA_BLOCK_COUNT' type='int'/>"
 "   <Option name='DES' type='string' description='Under the format DES=des-name=des-contents'/>"
