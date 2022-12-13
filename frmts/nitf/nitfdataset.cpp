@@ -3880,7 +3880,7 @@ static char **NITFJP2ECWOptions( char **papszOptions )
 /*      NITF creation options.                                          */
 /************************************************************************/
 
-static char **NITFJP2KAKOptions( char **papszOptions, GDALDataType eType )
+static char **NITFJP2KAKOptions( char **papszOptions )
 
 {
     char** papszJP2Options = CSLAddString(nullptr, "CODEC=J2K");
@@ -3926,27 +3926,33 @@ static char **NITFJP2KAKOptions( char **papszOptions, GDALDataType eType )
 
     const char* pszProfile = CSLFetchNameValue(papszOptions, "PROFILE");
     if (pszProfile && STARTS_WITH_CI(pszProfile, "NPJE")) {
+
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "Cprecincts", "");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "BLOCKXSIZE", "1024");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "BLOCKYSIZE", "1024");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "Qguard", "2");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "Sprofile", "PROFILE1");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "Corder", "LRCP");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "ORGgen_tlm", "22");
+        papszJP2Options = CSLSetNameValue(papszJP2Options, "LAYERS", "20");
+
         // See Table 2.3-3 - Target Bit Rates for Each Tile in Panchromatic Image Segments
         // of STDI-0006
         std::vector<double> adfBPP = { 0.03125, 0.0625, 0.125, 0.25, 0.5,
                                         0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2,
                                         1.3, 1.5, 1.7, 2.0, 2.3, 3.5, 3.9 };
 
-        const int nABPP = atoi(CSLFetchNameValueDef(papszOptions, "ABPP",
-                                    CPLSPrintf("%d", GDALGetDataTypeSize(eType))));
-
         if( EQUAL(pszProfile, "NPJE") ||
             EQUAL(pszProfile, "NPJE_NUMERICALLY_LOSSLESS") )
         {
-            adfBPP.push_back(nABPP);
-        }
+            adfBPP.push_back(8.0);
 
-        double dfQuality =
-                    CPLAtof(CSLFetchNameValueDef(papszOptions, "QUALITY", "0"));
+            papszJP2Options = CSLSetNameValue(papszJP2Options,"Creversible", "YES");
+        }
 
         auto rate_fold = [](CPLString part1, double part2)
         {
-            if (part2 == (double)nABPP)
+            if (part2 == 8.0)
             {
                 return CPLString("-");
             }
@@ -3954,7 +3960,7 @@ static char **NITFJP2KAKOptions( char **papszOptions, GDALDataType eType )
             {
                 return CPLString(std::to_string(part2));
             }
-            return CPLString(std::move(part1) + "," + std::to_string(part2/nABPP));
+            return CPLString(std::move(part1) + "," + std::to_string(part2/8.0));
         };
 
         CPLString rateString =
@@ -5124,7 +5130,7 @@ NITFDataset::NITFCreateCopy(
         }
         else if (EQUAL(poJ2KDriver->GetDescription(), "JP2KAK"))
         {
-           char** papszJP2Options = NITFJP2KAKOptions(papszFullOptions, eType);
+           char** papszJP2Options = NITFJP2KAKOptions(papszFullOptions);
             poJ2KDataset =
                 poJ2KDriver->CreateCopy( osDSName, poSrcDS, FALSE,
                                          papszJP2Options,
