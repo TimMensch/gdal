@@ -3880,21 +3880,94 @@ static char **NITFJP2ECWOptions( char **papszOptions )
 /*      NITF creation options.                                          */
 /************************************************************************/
 
-static char **NITFJP2KAKOptions( char **papszOptions )
+static char **NITFJP2KAKOptions( char **papszOptions, GDALDataType eType )
 
 {
     char** papszJP2Options = CSLAddString(nullptr, "CODEC=J2K");
 
+    std::vector<std::string> kakOptions= {
+        "QUALITY=",
+        "BLOCKXSIZE=",
+        "BLOCKYSIZE=",
+        "LAYERS=",
+        "ROI=",
+        "Clayers=",
+        "Creversible=",
+        "NBITS=",
+        "Corder=",
+        "Cprecincts=",
+        "ORGgen_plt=",
+        "ORGgen_tlm=",
+        "ORGtparts=",
+        "Qguard=",
+        "Cmodes=",
+        "Clevels=",
+        "Cblk=",
+        "Rshift=",
+        "Rlevels=",
+        "Rweight=",
+        "Sprofile=",
+        "COMSEG=",
+        "GMLJP2=",
+        "GMLJP2V2_DEF=",
+        "FLUSH="
+    };
+
     for( int i = 0; papszOptions != nullptr && papszOptions[i] != nullptr; i++ )
     {
-        if( STARTS_WITH_CI(papszOptions[i], "QUALITY=") ||
-            STARTS_WITH_CI(papszOptions[i], "BLOCKXSIZE=") ||
-            STARTS_WITH_CI(papszOptions[i], "BLOCKYSIZE=") ||
-            STARTS_WITH_CI(papszOptions[i], "LAYERS=") ||
-            STARTS_WITH_CI(papszOptions[i], "ROI=") )
-        {
-            papszJP2Options = CSLAddString(papszJP2Options, papszOptions[i]);
+        for (auto option = kakOptions.begin(); option != kakOptions.end(); ++option) {
+            if (STARTS_WITH_CI(papszOptions[i], (*option).c_str()))
+            {
+                papszJP2Options = CSLAddString(papszJP2Options, papszOptions[i]);
+                break;
+            }
         }
+    }
+
+    const char* pszProfile = CSLFetchNameValue(papszOptions, "PROFILE");
+    if (pszProfile && STARTS_WITH_CI(pszProfile, "NPJE")) {
+        // See Table 2.3-3 - Target Bit Rates for Each Tile in Panchromatic Image Segments
+        // of STDI-0006
+        std::vector<double> adfBPP = { 0.03125, 0.0625, 0.125, 0.25, 0.5,
+                                        0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2,
+                                        1.3, 1.5, 1.7, 2.0, 2.3, 3.5, 3.9 };
+
+        const int nABPP = atoi(CSLFetchNameValueDef(papszOptions, "ABPP",
+                                    CPLSPrintf("%d", GDALGetDataTypeSize(eType))));
+
+        if( EQUAL(pszProfile, "NPJE") ||
+            EQUAL(pszProfile, "NPJE_NUMERICALLY_LOSSLESS") )
+        {
+            adfBPP.push_back(nABPP);
+        }
+
+        double dfQuality =
+                    CPLAtof(CSLFetchNameValueDef(papszOptions, "QUALITY", "0"));
+
+        auto rate_fold = [](CPLString part1, double part2)
+        {
+            if (part2 == (double)nABPP)
+            {
+                return CPLString("-");
+            }
+            if (part1.length()==0)
+            {
+                return CPLString(std::to_string(part2));
+            }
+            return CPLString(std::move(part1) + "," + std::to_string(part2/nABPP));
+        };
+
+        CPLString rateString =
+            std::accumulate(
+                adfBPP.rbegin(),
+                adfBPP.rend(),
+                CPLString(""),
+                rate_fold
+        );
+
+        printf("rateString: %s", rateString.c_str());
+
+        papszJP2Options = CSLSetNameValue( papszJP2Options, "RATE", rateString ) ;
     }
 
     return papszJP2Options;
@@ -4920,7 +4993,7 @@ NITFDataset::NITFCreateCopy(
         if( pszProfile && EQUAL(pszProfile, "EPJE") )
         {
             CPLError(CE_Warning, CPLE_AppDefined,
-                     "PROFILE=EPJE not handled by JP2OPENJPEG driver");
+                     "PROFILE=EPJE not handled by JP2OPENJPEG or JP2KAK driver");
         }
 
         int nBlockXSize = atoi(
@@ -5007,26 +5080,6 @@ NITFDataset::NITFCreateCopy(
                 osJ2KLRA += CPLSPrintf("%09.6f", adfBPP[i]);
             }
             papszFullOptions = CSLAddString( papszFullOptions, osJ2KLRA ) ;
-
-            if (EQUAL(poJ2KDriver->GetDescription(), "JP2KAK")) {
-                auto rate_fold = [](CPLString part1, double part2)
-                {
-                    if (part2 == 8.0)
-                    {
-                        return CPLString("-");
-                    }
-                    if (part1.length()==0)
-                    {
-                        return CPLString(std::to_string(part2));
-                    }
-                    return CPLString(std::move(part1) + "," + std::to_string(part2/8.0));
-                };
-
-                CPLString rateString = std::accumulate(adfBPP.rbegin(), adfBPP.rend(), CPLString(""), rate_fold);
-                printf("rateString: %s", rateString.c_str());
-
-                CSLSetNameValue( papszFullOptions, "RATE", rateString ) ;
-            }
         }
 
     }
@@ -5071,7 +5124,7 @@ NITFDataset::NITFCreateCopy(
         }
         else if (EQUAL(poJ2KDriver->GetDescription(), "JP2KAK"))
         {
-           char** papszJP2Options = NITFJP2KAKOptions(papszFullOptions);
+           char** papszJP2Options = NITFJP2KAKOptions(papszFullOptions, eType);
             poJ2KDataset =
                 poJ2KDriver->CreateCopy( osDSName, poSrcDS, FALSE,
                                          papszJP2Options,
@@ -6736,6 +6789,34 @@ void NITFDriver::InitCreationOptionList()
 "   <Option name='BLOCKSIZE' type='int' description='Set the block with and height. Overridden by BLOCKXSIZE and BLOCKYSIZE'/>"
 "   <Option name='TEXT' type='string' description='TEXT options as text-option-name=text-option-content'/>"
 "   <Option name='CGM' type='string' description='CGM options in cgm-option-name=cgm-option-content'/>";
+
+    if( bHasJP2KAK ) {
+        osCreationOptions +=
+            "   <Option name='GMLJP2' type='boolean' description='defaults to ON'/>"
+            "   <Option name='GMLJP2V2_DEF' type='string' description="
+            "'Definition file to describe how a GMLJP2 v2 box should be generated. "
+            "If set to YES, a minimal instance will be created'/>"
+            "   <Option name='LAYERS' type='integer'/>"
+            "   <Option name='ROI' type='string'/>"
+            "   <Option name='COMSEG' type='boolean' />"
+            "   <Option name='FLUSH' type='boolean' />"
+            "   <Option name='NBITS' type='int' description="
+            "'BITS (precision) for sub-byte files (1-7), sub-uint16 (9-15)'/>"
+            "   <Option name='RATE' type='string' description='bit-rates separated by commas'/>"
+            "   <Option name='Creversible' type='boolean'/>"
+            "   <Option name='Corder' type='string'/>"
+            "   <Option name='Cprecincts' type='string'/>"
+            "   <Option name='Cmodes' type='string'/>"
+            "   <Option name='Clevels' type='string'/>"
+            "   <Option name='ORGgen_plt' type='string'/>"
+            "   <Option name='ORGgen_tlm' type='string'/>"
+            "   <Option name='ORGtparts' type='string'/>"
+            "   <Option name='Qguard' type='integer'/>"
+            "   <Option name='Sprofile' type='string'/>"
+            "   <Option name='Rshift' type='string'/>"
+            "   <Option name='Rlevels' type='string'/>"
+            "   <Option name='Rweight' type='string'/>";
+    }
 
     for( unsigned int i=0;
          i < sizeof(asFieldDescription) / sizeof(asFieldDescription[0]);
