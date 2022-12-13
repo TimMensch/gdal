@@ -46,6 +46,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <numeric>
+#include <functional>
 
 #include "cpl_conv.h"
 #include "cpl_csv.h"
@@ -4327,11 +4329,11 @@ NITFDataset::NITFCreateCopy(
 
             if( CPLTestBool(CSLFetchNameValueDef(papszOptions, "J2KLRA", "NO")) )
             {
-                if( !EQUAL(poJ2KDriver->GetDescription(), "JP2OPENJPEG") )
+                if( !EQUAL(poJ2KDriver->GetDescription(), "JP2OPENJPEG") && !EQUAL(poJ2KDriver->GetDescription(), "JP2KAK") )
                 {
                     CPLError(CE_Warning, CPLE_NotSupported,
                              "J2KLRA TRE can only be written "
-                             "when using the JP2OPENJPEG driver in NPJE profiles");
+                             "when using the JP2OPENJPEG or JP2KAK driver in NPJE profiles");
                 }
                 else if( !STARTS_WITH_CI(CSLFetchNameValueDef(
                             papszOptions, "PROFILE", ""), "NPJE") )
@@ -4912,7 +4914,7 @@ NITFDataset::NITFCreateCopy(
         }
     }
     else if( poJ2KDriver != nullptr &&
-             EQUAL(poJ2KDriver->GetDescription(), "JP2OPENJPEG") )
+             (EQUAL(poJ2KDriver->GetDescription(), "JP2OPENJPEG") || EQUAL(poJ2KDriver->GetDescription(), "JP2KAK")) )
     {
         const char* pszProfile = CSLFetchNameValue(papszFullOptions, "PROFILE");
         if( pszProfile && EQUAL(pszProfile, "EPJE") )
@@ -5005,7 +5007,28 @@ NITFDataset::NITFCreateCopy(
                 osJ2KLRA += CPLSPrintf("%09.6f", adfBPP[i]);
             }
             papszFullOptions = CSLAddString( papszFullOptions, osJ2KLRA ) ;
+
+            if (EQUAL(poJ2KDriver->GetDescription(), "JP2KAK")) {
+                auto rate_fold = [](CPLString part1, double part2)
+                {
+                    if (part2 == 8.0)
+                    {
+                        return CPLString("-");
+                    }
+                    if (part1.length()==0)
+                    {
+                        return CPLString(std::to_string(part2));
+                    }
+                    return CPLString(std::move(part1) + "," + std::to_string(part2/8.0));
+                };
+
+                CPLString rateString = std::accumulate(adfBPP.rbegin(), adfBPP.rend(), CPLString(""), rate_fold);
+                printf("rateString: %s", rateString.c_str());
+
+                CSLSetNameValue( papszFullOptions, "RATE", rateString ) ;
+            }
         }
+
     }
 
     int nIMIndex = 0;
