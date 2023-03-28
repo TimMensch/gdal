@@ -3947,6 +3947,9 @@ static char **NITFJP2OPENJPEGOptions( GDALDriver* poJ2KDriver,
         // Empty PRECINCTS option to ask for no custom precincts
         papszJP2Options = CSLAddString(papszJP2Options, "PRECINCTS=");
 
+        // Set TILEPARTS
+        papszJP2Options = CSLAddString(papszJP2Options, "TILEPARTS=LAYERS");
+
         // See Table 2.3-3 - Target Bit Rates for Each Tile in Panchromatic Image Segments
         // of STDI-0006
         std::vector<double> adfBPP = { 0.03125, 0.0625, 0.125, 0.25, 0.5,
