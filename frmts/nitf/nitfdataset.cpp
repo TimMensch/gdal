@@ -7128,6 +7128,7 @@ void NITFDriver::InitCreationOptionList()
     osCreationOptions +=
         "   <Option name='TRE' type='string' description='Under the format "
         "TRE=tre-name,tre-contents'/>"
+        "   <Option name='TLM' type='boolean' description='Write TLM and PLT'/>"
         "   <Option name='FILE_TRE' type='string' description='Under the "
         "format FILE_TRE=tre-name,tre-contents'/>"
         "   <Option name='RESERVE_SPACE_FOR_TRE_OVERFLOW' type='boolean' "
