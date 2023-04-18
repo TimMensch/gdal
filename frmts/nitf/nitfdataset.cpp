@@ -4058,9 +4058,6 @@ static char **NITFJP2OPENJPEGOptions(GDALDriver *poJ2KDriver,
         // Empty PRECINCTS option to ask for no custom precincts
         papszJP2Options = CSLAddString(papszJP2Options, "PRECINCTS=");
 
-        // Set TILEPARTS
-        papszJP2Options = CSLAddString(papszJP2Options, "TILEPARTS=RESOLUTIONS");
-
         // See Table 2.3-3 - Target Bit Rates for Each Tile in Panchromatic
         // Image Segments of STDI-0006
         std::vector<double> adfBPP = {
@@ -4104,7 +4101,7 @@ static char **NITFJP2OPENJPEGOptions(GDALDriver *poJ2KDriver,
         if (strstr(poJ2KDriver->GetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST),
                    "TLM") != nullptr)
         {
-            papszJP2Options = CSLAddString(papszJP2Options, "PLT=YES");
+            papszJP2Options = CSLAddString(papszJP2Options, "PLT=NO");
             papszJP2Options = CSLAddString(papszJP2Options, "TLM=YES");
         }
         else
